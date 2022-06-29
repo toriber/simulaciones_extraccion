@@ -1,9 +1,11 @@
 import numpy as np
+import pyspark
 import pandas as pd
+from pyspark.sql import SparkSession
 
 from pathlib import Path
 
-
+from pyspark.sql.functions import lit
 
 #Generar los espacios
 h=0.1
@@ -41,8 +43,8 @@ pit=xyz
 
 if Path("X_no_alpha_pit2.csv").is_file():
     print ("File X_no_alpha_pit2.csv exist")
-    X_no_alpha=np.array(pd.read_csv("X_no_alpha_pit2.csv",sep=",",header=None))
-    Y_no_w=np.array(pd.read_csv("Y_no_w_pit2.csv",sep=",",header=None))
+    X_no_alpha=X=np.genfromtxt('X_no_alpha_pit2.csv',delimiter=',')
+    Y_no_w=Y=np.genfromtxt('Y_no_w_pit2.csv',delimiter=',')
 else:
     print ("File X_no_alpha_pit2.csv not exist")
     X_no_alpha,Y_no_w=get_XY(pit,lambda point: g_func(point))
@@ -53,7 +55,17 @@ else:
 
 def func_c(X,Y,Gamma):
     print('Generating c function')
-    c=pd.concat([pd.DataFrame(np.full((1,Y.shape[0]),10**9), columns=list(range(Y.shape[0]))) for i in range(X.shape[0])],ignore_index=True)
+    spark=SparkSession.builder.appName('matriz_c').getOrCreate()
+    df_c=spark.read.csv('X_no_alpha_pit2.csv',inferSchema=True)
+    X_dim=X.shape[1]
+    for i in range(X_dim):
+        df_c=df_c.withColumn(df_c.columns[i],lit(10**9))
+        
+    for j in range(Y.shape[0]-X_dim):
+        j=j+X_dim
+        df_c=df_c.withColumn('_c{}'.format(j),lit(10**9))
+    df_c.write.format('csv').save("c_10_9")
+    return
     i=0
     for x in X:
         j=0
@@ -67,9 +79,8 @@ def func_c(X,Y,Gamma):
         if i % 10000==0:
             print("Has been "+str(i)+" iterations")
     return c
-
 c=func_c(X_no_alpha,Y_no_w,lambda point: gamma_sq(point,pit))
-
+exit()
 c_new=np.append(c,np.ones((X_no_alpha.shape[0],1)),axis=1)
 c_new=np.append(c_new,np.zeros((Y_no_w.shape[0]+1,1)).T,axis=0)
 mu=np.array(list())
